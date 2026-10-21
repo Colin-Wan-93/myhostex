@@ -1,7 +1,8 @@
 // api/client.js
 
-const BASE_URL = '/v3';
-const TOKEN = 'DHCvongrTc2jBz18gwyj1CmCbBQnD37uOC5lIJ2SbHeWDYrYobih2MDnVKD4F55b';
+// 直接使用 Vite 的环境变量作为 API 基础路径
+// 开发环境是 /v3，生产环境是你配置的 Render 代理地址 + /hostex/v3
+const BASE_URL = import.meta.env.VITE_API_BASE || '/v3';
 
 // 通用错误类
 export class ApiError extends Error {
@@ -17,7 +18,7 @@ export class ApiError extends Error {
 class ApiClient {
   constructor(config = {}) {
     this.baseURL = config.baseURL ?? BASE_URL;
-    this.token = config.token ?? TOKEN;
+    // 移除这里的 Token 配置，请求拦截器会在发送请求时自动带上
     this.requestInterceptors = config.requestInterceptors ?? [];
     this.responseInterceptors = config.responseInterceptors ?? [];
   }
@@ -26,19 +27,25 @@ class ApiClient {
     const { params, ...fetchConfig } = config;
 
     // 构建 URL
-    const url = new URL(this.baseURL + path, window.location.origin);
+    // 如果 baseURL 是完整的 http 链接（Render 代理），就直接拼接
+    let url;
+    if (this.baseURL.startsWith('http')) {
+      url = new URL(this.baseURL + path);
+    } else {
+      url = new URL(this.baseURL + path, window.location.origin);
+    }
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined) url.searchParams.append(key, String(value));
       });
     }
 
-    // 组装请求配置
+    // 组装请求配置，移除硬编码的 Token
     let finalConfig = {
       ...fetchConfig,
       headers: {
         accept: 'application/json',
-        'Hostex-Access-Token': this.token,
         ...fetchConfig.headers,
       },
     };

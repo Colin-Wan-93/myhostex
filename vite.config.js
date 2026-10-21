@@ -13,13 +13,20 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173, // 可选，开发端口
-    open: true, // 可选，自动打开浏览器
+    port: 5173,
+    open: true,
     proxy: {
       '/v3': {
-        target: 'https://api.myhostex.com',
-        changeOrigin: true, // 注意拼写：changeOrigin，不是 changeOrigin 的变体
-        secure: true, // target 是 https 时设为 true
+        target: 'https://myhostex-proxy.onrender.com',
+        changeOrigin: true,
+        secure: true,
+        // 这里做清洗：把开头和结尾所有的斜杠都去掉，然后拼接一个标准路径
+        rewrite: (path) => {
+          // 去掉开头的 /v3 和多余的斜杠，比如 v3//properties 变成 properties
+          const cleanPath = path.replace(/^\/?v3\/+/, '');
+          // 拼接成 Render 后台需要的标准格式：/hostex/v3/properties
+          return `/hostex/v3/${cleanPath}`;
+        },
       },
     },
   },
