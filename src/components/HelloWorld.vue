@@ -2,21 +2,29 @@
   <div class="home">
     <!-- 房间区域 -->
     <section>
-      <h2>房间列表</h2>
-      <div v-if="roomLoading">房间加载中...</div>
-      <div v-else-if="roomError" style="color: red">{{ roomError }}</div>
-      <div v-else>
-        <p>房间数：{{ roomsData.length }}</p>
+      <div class="header">
+        <h2>房间列表</h2>
+        <el-button type="primary" :loading="exporting" :disabled="roomLoading || resLoading || tableData.length === 0"
+          @click="exportImage">
+          {{ exporting ? '导出中...' : '导出图片' }}
+        </el-button>
       </div>
-      <el-table :data="tableData" border stripe style="width: 100%; margin-top: 20px">
-        <el-table-column prop="name" label="房源" width="100" />
-        <el-table-column prop="weekday_base" label="平日基础" />
-        <el-table-column prop="weekday_rate_average" label="平日房价" />
-        <el-table-column prop="weekday_payment_average" label="平日实收" />
-        <el-table-column prop="weekend_base" label="周末基础" />
-        <el-table-column prop="weekend_rate_average" label="周末房价" />
-        <el-table-column prop="weekend_payment_average" label="周末实收" />
-      </el-table>
+      <div ref="exportArea" class="export-area">
+        <div v-if="roomLoading">房间加载中...</div>
+        <div v-else-if="roomError" style="color: red">{{ roomError }}</div>
+        <div v-else>
+          <p>房间数：{{ roomsData.length }}</p>
+        </div>
+        <el-table :data="tableData" border stripe style="width: 100%; margin-top: 20px">
+          <el-table-column prop="name" label="房源" width="100" />
+          <el-table-column prop="weekday_base" label="平日基础" />
+          <el-table-column prop="weekday_rate_average" label="平日房价" />
+          <el-table-column prop="weekday_payment_average" label="平日实收" />
+          <el-table-column prop="weekend_base" label="周末基础" />
+          <el-table-column prop="weekend_rate_average" label="周末房价" />
+          <el-table-column prop="weekend_payment_average" label="周末实收" />
+        </el-table>
+      </div>
     </section>
   </div>
 </template>
@@ -27,6 +35,7 @@ import { reservationApi } from '@/api/reservations'
 import { propertyApi } from '@/api/properties'
 import { GROUPCONFIG } from '@/config/rooms.js'
 import { getRecentWeekSeparated, checkDateRangeType, roundToTwoDecimals } from '@/utils/functions.js'
+import { toPng } from 'html-to-image'
 
 const tableData = ref([]);
 // ===== 房间数据 =====
@@ -76,6 +85,10 @@ async function fetchRooms(force = false) {
   }
 }
 
+
+const exportArea = ref(null)
+const exporting = ref(false)
+
 // ===== 预订数据 =====
 const reservations = ref([])
 const resLoading = ref(false)
@@ -87,7 +100,6 @@ const fetchReservations = async (startDate, endDate, offset) => {
     endCheckInDate: endDate,
     offset,
   })
-  console.log(`fetchReservations: startDate=${startDate}, endDate=${endDate}, offset=${offset}`, res)
   return res.data
 }
 
@@ -112,6 +124,27 @@ const loopFetchReservations = async (startDate, endDate) => {
     resError.value = e?.message || '获取预订列表失败'
   } finally {
     resLoading.value = false
+  }
+}
+
+async function exportImage() {
+  if (!exportArea.value) return
+  exporting.value = true
+  try {
+    const dataUrl = await toPng(exportArea.value, {
+      backgroundColor: '#ffffff',   // 避免透明背景
+      pixelRatio: 2,                // 2 倍清晰度，文字不糊
+      cacheBust: true,
+    })
+    const link = document.createElement('a')
+    const date = new Date().toISOString().slice(0, 10)
+    link.download = `房源数据_${date}.png`
+    link.href = dataUrl
+    link.click()
+  } catch (e) {
+    console.error('导出图片失败:', e)
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -150,7 +183,7 @@ onMounted(async () => {
     }
     for (let i = 0; i < group.rooms.length; i++) {
       const room = group.rooms[i];
-      
+
       for (let j = 0; j < reservations.value.length; j++) {
         const res = reservations.value[j];
         if (res.property_id === room.id) {
@@ -171,10 +204,11 @@ onMounted(async () => {
       }
 
     }
-    groupData.weekday_payment_average = groupData.weekday_days ?  roundToTwoDecimals(groupData.weekday_payment / groupData.weekday_days) : 0;
+
+    groupData.weekday_payment_average = groupData.weekday_days ? roundToTwoDecimals(groupData.weekday_payment / groupData.weekday_days) : 0;
     groupData.weekday_rate_average = groupData.weekday_days ? roundToTwoDecimals(groupData.weekday_rate / groupData.weekday_days) : 0;
-    groupData.weekend_rate_average = groupData.weekend_days ?  roundToTwoDecimals(groupData.weekend_rate / groupData.weekend_days) : 0;
-    groupData.weekend_payment_average = groupData.weekend_days ?  roundToTwoDecimals(groupData.weekend_payment / groupData.weekend_days) : 0;
+    groupData.weekend_rate_average = groupData.weekend_days ? roundToTwoDecimals(groupData.weekend_rate / groupData.weekend_days) : 0;
+    groupData.weekend_payment_average = groupData.weekend_days ? roundToTwoDecimals(groupData.weekend_payment / groupData.weekend_days) : 0;
 
     return {
       ...group,
@@ -194,6 +228,15 @@ onMounted(async () => {
   padding: 20px;
 }
 
+.header {
+  display: flex;
+  margin-bottom: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  margin-bottom: 10px;
+}
+
 section {
   margin-top: 30px;
 }
@@ -206,5 +249,10 @@ ul {
 li {
   padding: 4px 0;
   border-bottom: 1px solid #eee;
+}
+
+.export-area {
+  background: #fff;
+  padding: 16px;
 }
 </style>
