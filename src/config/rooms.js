@@ -82,7 +82,6 @@ export const GROUPCONFIG = [
             { title: "诺曼底20-25" }
         ]
     },
-    ,
     {
         name: "伊丽莎白",
         weekday_base: 208,

@@ -25,12 +25,41 @@
           <el-table-column prop="weekend_payment_average" label="周末实收" />
         </el-table>
       </div>
+
+      <!-- 移动端导出专用：纯 HTML 表格，离屏渲染，宽度由 CSS 固定，不依赖 JS 布局 -->
+      <div v-if="showMobileExport" ref="mobileExportArea" class="mobile-export-area">
+        <p class="export-title">房间数：{{ roomsData.length }}</p>
+        <table class="export-table">
+          <thead>
+            <tr>
+              <th>房源</th>
+              <th>平日基础</th>
+              <th>平日房价</th>
+              <th>平日实收</th>
+              <th>周末基础</th>
+              <th>周末房价</th>
+              <th>周末实收</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, index) in tableData" :key="index">
+              <td>{{ row.name }}</td>
+              <td>{{ row.weekday_base }}</td>
+              <td>{{ row.weekday_rate_average }}</td>
+              <td>{{ row.weekday_payment_average }}</td>
+              <td>{{ row.weekend_base }}</td>
+              <td>{{ row.weekend_rate_average }}</td>
+              <td>{{ row.weekend_payment_average }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick } from 'vue'
 import { reservationApi } from '@/api/reservations'
 import { propertyApi } from '@/api/properties'
 import { GROUPCONFIG } from '@/config/rooms.js'
@@ -89,6 +118,13 @@ async function fetchRooms(force = false) {
 const exportArea = ref(null)
 const exporting = ref(false)
 
+// ===== 移动端导出专用 =====
+const mobileExportArea = ref(null)
+const showMobileExport = ref(false)
+
+// 判断是否移动端（需要更精确时可改成 ua 检测）
+const isMobile = () => window.innerWidth < 768
+
 // ===== 预订数据 =====
 const reservations = ref([])
 const resLoading = ref(false)
@@ -128,14 +164,38 @@ const loopFetchReservations = async (startDate, endDate) => {
 }
 
 async function exportImage() {
-  if (!exportArea.value) return
   exporting.value = true
   try {
-    const dataUrl = await toPng(exportArea.value, {
+    let target = exportArea.value
+    let options = {
       backgroundColor: '#ffffff',   // 避免透明背景
       pixelRatio: 2,                // 2 倍清晰度，文字不糊
       cacheBust: true,
-    })
+    }
+
+    if (isMobile()) {
+      // 移动端：渲染离屏的固定宽度纯 HTML 表格
+      showMobileExport.value = true
+      await nextTick()
+      target = mobileExportArea.value
+      if (!target) return
+
+      options = {
+        ...options,
+        width: 800,   // 截图画布固定宽度，与离屏容器一致
+        // 关键：覆盖克隆节点的样式，把离屏偏移重置回画布原点
+        style: {
+          position: 'static',
+          left: '0',
+          top: '0',
+          zIndex: 'auto',
+        },
+      }
+    }
+
+    if (!target) return
+
+    const dataUrl = await toPng(target, options)
     const link = document.createElement('a')
     const date = new Date().toISOString().slice(0, 10)
     link.download = `房源数据_${date}.png`
@@ -145,6 +205,7 @@ async function exportImage() {
     console.error('导出图片失败:', e)
   } finally {
     exporting.value = false
+    showMobileExport.value = false // 导出完销毁离屏表格，不影响页面
   }
 }
 
@@ -254,5 +315,50 @@ li {
 .export-area {
   background: #fff;
   padding: 16px;
+}
+
+/* ===== 移动端导出专用：离屏渲染 ===== */
+.mobile-export-area {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 800px;
+  /* 固定宽度，所有列完整铺开 */
+  background: #fff;
+  padding: 16px;
+  z-index: -1;
+}
+
+.export-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #333;
+}
+
+/* 纯 HTML 表格：table-layout: fixed + 固定宽度，不依赖任何 JS 布局 */
+.export-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+  color: #333;
+}
+
+.export-table th,
+.export-table td {
+  border: 1px solid #dcdfe6;
+  padding: 8px 6px;
+  text-align: left;
+  word-break: break-all;
+}
+
+.export-table th {
+  background: #f5f7fa;
+  font-weight: 600;
+}
+
+/* 斑马纹，和 el-table 的 stripe 效果一致 */
+.export-table tbody tr:nth-child(even) {
+  background: #fafafa;
 }
 </style>
